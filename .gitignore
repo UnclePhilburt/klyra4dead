@@ -4,6 +4,8 @@
 [Oo]bj/
 [Bb]uild/
 [Bb]uilds/
+# But keep WebGL build for Netlify
+!doc/Build/
 [Ll]ogs/
 [Uu]ser[Ss]ettings/
 
