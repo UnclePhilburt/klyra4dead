@@ -106,6 +106,9 @@ public class NetworkPlayerPrefabCreator : EditorWindow
         GameObject playerCopy = Instantiate(source);
         playerCopy.name = prefabName;
 
+        // Remove any missing scripts from the copy (and all children)
+        RemoveMissingScripts(playerCopy);
+
         // Add or get PhotonView
         PhotonView photonView = playerCopy.GetComponent<PhotonView>();
         if (photonView == null)
@@ -204,6 +207,22 @@ public class NetworkPlayerPrefabCreator : EditorWindow
                 Selection.activeObject = spawnerObj;
                 Debug.Log("[NetworkPlayerPrefabCreator] Added NetworkPlayerSpawner to scene");
             }
+        }
+    }
+
+    private static void RemoveMissingScripts(GameObject go)
+    {
+        // Remove missing scripts from this object
+        int removed = GameObjectUtility.RemoveMonoBehavioursWithMissingScript(go);
+        if (removed > 0)
+        {
+            Debug.Log($"[NetworkPlayerPrefabCreator] Removed {removed} missing script(s) from {go.name}");
+        }
+
+        // Recursively remove from all children
+        foreach (Transform child in go.transform)
+        {
+            RemoveMissingScripts(child.gameObject);
         }
     }
 }

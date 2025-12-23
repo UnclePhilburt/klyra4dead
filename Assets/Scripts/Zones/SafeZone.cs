@@ -65,6 +65,8 @@ public class SafeZone : MonoBehaviour
 
     void OnTriggerEnter(Collider other)
     {
+        Debug.Log($"[SafeZone] Something entered: {other.gameObject.name} (layer: {LayerMask.LayerToName(other.gameObject.layer)})");
+
         // Check for zombie
         ZombieHealth zombie = other.GetComponent<ZombieHealth>();
         if (zombie == null) zombie = other.GetComponentInParent<ZombieHealth>();
@@ -80,14 +82,31 @@ public class SafeZone : MonoBehaviour
             return;
         }
 
-        // Check for player
+        // Check for player - try multiple ways to detect
         PlayerHealth player = other.GetComponent<PlayerHealth>();
         if (player == null) player = other.GetComponentInParent<PlayerHealth>();
+
+        // Also check by ThirdPersonMotor if PlayerHealth not found directly
+        if (player == null)
+        {
+            ThirdPersonMotor motor = other.GetComponent<ThirdPersonMotor>();
+            if (motor == null) motor = other.GetComponentInParent<ThirdPersonMotor>();
+            if (motor != null)
+            {
+                player = motor.GetComponent<PlayerHealth>();
+            }
+        }
+
+        // Check by tag as last resort
+        if (player == null && other.CompareTag("Player"))
+        {
+            player = other.GetComponentInParent<PlayerHealth>();
+        }
 
         if (player != null)
         {
             playersInZone.Add(player);
-            Debug.Log("[SafeZone] Player entered safe zone");
+            Debug.Log($"[SafeZone] Player entered safe zone: {player.gameObject.name}");
 
             // Stop combat music
             if (stopCombatMusic && CombatMusicManager.Instance != null)
@@ -101,12 +120,28 @@ public class SafeZone : MonoBehaviour
                 if (SpawnManager.Instance != null)
                 {
                     SpawnManager.Instance.UnlockSafeZoneSpawn();
+                    Debug.Log("[SafeZone] Spawn point unlocked!");
                 }
 
-                TutorialQuestUI quest = FindFirstObjectByType<TutorialQuestUI>();
-                if (quest != null)
+                // Complete tutorial quest
+                if (TutorialQuestUI.Instance != null)
                 {
-                    quest.CompleteQuest();
+                    TutorialQuestUI.Instance.CompleteQuest();
+                    Debug.Log("[SafeZone] Tutorial quest completed!");
+                }
+                else
+                {
+                    // Fallback to find
+                    TutorialQuestUI quest = FindFirstObjectByType<TutorialQuestUI>();
+                    if (quest != null)
+                    {
+                        quest.CompleteQuest();
+                        Debug.Log("[SafeZone] Tutorial quest completed (fallback)!");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[SafeZone] TutorialQuestUI not found!");
+                    }
                 }
             }
         }

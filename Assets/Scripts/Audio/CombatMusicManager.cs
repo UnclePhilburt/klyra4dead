@@ -10,7 +10,7 @@ public class CombatMusicManager : MonoBehaviour
     public float musicVolume = 0.5f;
     public float fadeInSpeed = 1f;
     public float fadeOutSpeed = 2f;
-    public float combatCooldown = 5f; // How long after last aggro before music stops
+    public float combatCooldown = 10f; // How long after last aggro before music stops
 
     private AudioSource audioSource;
     private bool inCombat;

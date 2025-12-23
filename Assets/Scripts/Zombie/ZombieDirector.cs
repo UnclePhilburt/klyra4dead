@@ -21,8 +21,8 @@ public class ZombieDirector : MonoBehaviourPunCallbacks
     public float baseIntensity = 0.5f;    // 0 = calm, 1 = intense
     public float intensityBuildRate = 0.1f;
     public float intensityDecayRate = 0.05f;
-    public float calmPeriodDuration = 5f;     // Short breather
-    public float intensePeriodDuration = 45f; // Long chaos
+    public float calmPeriodDuration = 15f;    // Breather between waves
+    public float intensePeriodDuration = 30f; // Intense spawning period
 
     [Header("Ambush")]
     public float ambushChance = 0.2f;     // Chance per spawn cycle to trigger ambush

@@ -23,6 +23,13 @@ public class TutorialQuestUI : MonoBehaviour
     private GUIStyle distanceStyle;
     private Texture2D markerTexture;
 
+    public static TutorialQuestUI Instance { get; private set; }
+
+    void Awake()
+    {
+        Instance = this;
+    }
+
     void Start()
     {
         // Check if already completed

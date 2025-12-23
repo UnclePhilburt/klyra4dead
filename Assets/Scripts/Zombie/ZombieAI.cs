@@ -262,10 +262,6 @@ public class ZombieAI : MonoBehaviourPunCallbacks, IPunObservable
 
         // Play chase sounds periodically
         PlayChaseSounds();
-
-        // Keep combat music playing
-        if (CombatMusicManager.Instance != null)
-            CombatMusicManager.Instance.TriggerCombat();
     }
 
     void UpdateAttacking()
@@ -299,10 +295,6 @@ public class ZombieAI : MonoBehaviourPunCallbacks, IPunObservable
             Attack();
             nextAttackTime = Time.time + attackCooldown;
         }
-
-        // Keep combat music playing
-        if (CombatMusicManager.Instance != null)
-            CombatMusicManager.Instance.TriggerCombat();
     }
 
     void Attack()
