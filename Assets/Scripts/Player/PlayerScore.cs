@@ -35,7 +35,7 @@ public class PlayerScore : MonoBehaviourPunCallbacks, IPunObservable
 
     public void AddKill(int points)
     {
-        if (!photonView.IsMine) return;
+        if (photonView != null && !photonView.IsMine) return;
 
         Kills++;
         Score += points;
@@ -48,7 +48,7 @@ public class PlayerScore : MonoBehaviourPunCallbacks, IPunObservable
 
     public void AddRevive(int points = 50)
     {
-        if (!photonView.IsMine) return;
+        if (photonView != null && !photonView.IsMine) return;
 
         Revives++;
         Score += points;
@@ -59,7 +59,7 @@ public class PlayerScore : MonoBehaviourPunCallbacks, IPunObservable
 
     public void AddPoints(int points)
     {
-        if (!photonView.IsMine) return;
+        if (photonView != null && !photonView.IsMine) return;
 
         Score += points;
         OnScoreChanged?.Invoke(Score);

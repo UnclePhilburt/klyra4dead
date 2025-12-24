@@ -33,6 +33,13 @@ public class WeaponSystem : MonoBehaviourPunCallbacks
 
     // State
     public int CurrentAmmo { get; private set; }
+
+    public float GetAmmoPercent()
+    {
+        int total = CurrentAmmo + reserveAmmo;
+        int maxTotal = maxAmmo + 120; // Assume 120 max reserve
+        return maxTotal > 0 ? (float)total / maxTotal : 0f;
+    }
     public bool IsReloading { get; private set; }
     public bool IsAiming { get; private set; }
     public float ReloadProgress { get; private set; }
@@ -62,7 +69,7 @@ public class WeaponSystem : MonoBehaviourPunCallbacks
 
     void Update()
     {
-        if (!photonView.IsMine) return;
+        if (photonView != null && !photonView.IsMine) return;
 
         // Find camera if not set
         if (playerCamera == null)

@@ -11,12 +11,23 @@ public class WeaponHolder : MonoBehaviour
     [Header("Auto-Find")]
     public string autoFindWeaponName = "assault1";
 
+    [Header("Muzzle Flash")]
+    public Vector3 firePointOffset = new Vector3(0f, 0f, 3f); // Forward from gun
+    public GameObject muzzleFlashPrefab;
+
     private Transform rightHand;
     private GameObject currentWeapon;
+    private Transform firePoint;
     private Animator animator;
 
     void Start()
     {
+        // Load muzzle flash prefab from Resources if not assigned
+        if (muzzleFlashPrefab == null)
+        {
+            muzzleFlashPrefab = Resources.Load<GameObject>("Effects/MuzzleFlash");
+        }
+
         // Delay to let character model spawn first
         Invoke(nameof(SetupWeapon), 0.2f);
     }
@@ -62,7 +73,6 @@ public class WeaponHolder : MonoBehaviour
                 if (weaponPrefab != null)
                 {
                     Debug.Log($"[WeaponHolder] Loaded weapon from FBX: {autoFindWeaponName}");
-                    // FBX needs different scale than prefab
                 }
                 #endif
             }
@@ -105,7 +115,112 @@ public class WeaponHolder : MonoBehaviour
             col.enabled = false;
         }
 
+        // Create FirePoint for muzzle flash
+        CreateFirePoint();
+
         Debug.Log($"[WeaponHolder] Attached weapon: {prefab.name} at scale {weaponScale}");
+    }
+
+    void CreateFirePoint()
+    {
+        if (currentWeapon == null) return;
+
+        // Try to find existing barrel/muzzle transform
+        Transform barrelTransform = FindBarrelTransform(currentWeapon.transform);
+
+        // Create FirePoint
+        GameObject firePointObj = new GameObject("FirePoint");
+        
+        if (barrelTransform != null)
+        {
+            // Attach to barrel
+            firePointObj.transform.SetParent(barrelTransform);
+            firePointObj.transform.localPosition = Vector3.forward * 0.5f; // Slightly forward from barrel
+            firePointObj.transform.localRotation = Quaternion.identity;
+            Debug.Log($"[WeaponHolder] FirePoint attached to barrel: {barrelTransform.name}");
+        }
+        else
+        {
+            // Attach to weapon root with offset
+            firePointObj.transform.SetParent(currentWeapon.transform);
+            firePointObj.transform.localPosition = firePointOffset;
+            firePointObj.transform.localRotation = Quaternion.identity;
+            Debug.Log("[WeaponHolder] FirePoint attached to weapon with offset");
+        }
+
+        firePoint = firePointObj.transform;
+
+        // Assign to shooting scripts
+        AssignToShootingScripts();
+    }
+
+    Transform FindBarrelTransform(Transform root)
+    {
+        string[] barrelNames = { "barrel", "muzzle", "flash", "tip", "end", "front" };
+
+        foreach (Transform child in root.GetComponentsInChildren<Transform>())
+        {
+            string nameLower = child.name.ToLower();
+            foreach (string barrelName in barrelNames)
+            {
+                if (nameLower.Contains(barrelName))
+                {
+                    return child;
+                }
+            }
+        }
+
+        // If no barrel found, find the furthest forward point
+        Transform furthest = null;
+        float maxZ = float.MinValue;
+
+        foreach (Transform child in root.GetComponentsInChildren<Transform>())
+        {
+            if (child.localPosition.z > maxZ)
+            {
+                maxZ = child.localPosition.z;
+                furthest = child;
+            }
+        }
+
+        return furthest != root ? furthest : null;
+    }
+
+    void AssignToShootingScripts()
+    {
+        // Assign to PlayerShooting
+        PlayerShooting ps = GetComponent<PlayerShooting>();
+        if (ps != null)
+        {
+            ps.firePoint = firePoint;
+            if (muzzleFlashPrefab != null)
+            {
+                ps.muzzleFlashPrefab = muzzleFlashPrefab;
+            }
+            Debug.Log("[WeaponHolder] Assigned FirePoint and MuzzleFlash to PlayerShooting");
+        }
+
+        // Also assign to WeaponSystem if present
+        WeaponSystem ws = GetComponent<WeaponSystem>();
+        if (ws != null)
+        {
+            ws.firePoint = firePoint;
+            if (muzzleFlashPrefab != null)
+            {
+                ws.muzzleFlashPrefab = muzzleFlashPrefab;
+            }
+            Debug.Log("[WeaponHolder] Assigned FirePoint and MuzzleFlash to WeaponSystem");
+        }
+    }
+
+    public Transform GetFirePoint()
+    {
+        return firePoint;
+    }
+
+    public GameObject GetCurrentWeapon()
+    {
+        return currentWeapon;
     }
 
     // Adjust in inspector

@@ -24,8 +24,8 @@ public class SpawnManager : MonoBehaviour
 
     void Start()
     {
-        // Wait a moment for player to spawn, then move them
-        Invoke(nameof(SpawnPlayer), spawnDelay);
+        // Disabled - NetworkPlayerSpawner handles spawning now
+        // Invoke(nameof(SpawnPlayer), spawnDelay);
     }
 
     void SpawnPlayer()
@@ -41,6 +41,14 @@ public class SpawnManager : MonoBehaviour
         ThirdPersonMotor player = FindFirstObjectByType<ThirdPersonMotor>();
         if (player != null)
         {
+            // Check if player is already near the spawn point (NetworkPlayerSpawner handled it)
+            float distToSpawn = Vector3.Distance(player.transform.position, spawnPoint.position);
+            if (distToSpawn < 5f)
+            {
+                Debug.Log("[SpawnManager] Player already at spawn point, skipping teleport");
+                return;
+            }
+            
             CharacterController cc = player.GetComponent<CharacterController>();
 
             // Disable CharacterController to teleport
@@ -52,7 +60,7 @@ public class SpawnManager : MonoBehaviour
             // Re-enable CharacterController
             if (cc != null) cc.enabled = true;
 
-            Debug.Log($"[SpawnManager] Player spawned at {spawnPoint.name}");
+            Debug.Log($"[SpawnManager] Player teleported to {spawnPoint.name}");
         }
         else
         {

@@ -2,46 +2,54 @@ using UnityEngine;
 using Photon.Pun;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
+/// <summary>
+/// Game Manager - Handles game state, waves (optional), and victory/defeat conditions.
+/// Can work alongside ZombiePopulationManager for dynamic spawning, or use traditional waves.
+/// </summary>
 public class GameManager : MonoBehaviourPunCallbacks
 {
     public static GameManager Instance { get; private set; }
 
-    [Header("Spawning")]
-    public Transform[] playerSpawnPoints;
+    [Header("Game Mode")]
+    [Tooltip("Use ZombiePopulationManager for dynamic spawning instead of waves")]
+    public bool useDynamicPopulation = true;
+    [Tooltip("If using waves, these settings apply")]
+    public bool useTraditionalWaves = false;
+
+    [Header("Wave Settings (if using traditional waves)")]
     public Transform[] zombieSpawnPoints;
     public GameObject[] zombiePrefabs;
-
-    [Header("Wave Settings")]
-    public int startingZombies = 5;
-    public int zombiesPerWave = 5;
-    public int zombiesPerPlayer = 3;
+    public int baseZombiesPerWave = 5;
+    public int zombiesPerWave = 3;
     public float timeBetweenWaves = 30f;
-    public float spawnInterval = 1f;
+    public int maxWaves = 0;
 
-    [Header("Game Settings")]
-    public int maxWaves = 10; // 0 = infinite
-    public float waveStartDelay = 5f;
+    [Header("Victory Conditions")]
+    public bool survivalMode = true; // No victory, just survive
+    public int wavesToWin = 10; // Only if !survivalMode && useTraditionalWaves
+
+    [Header("References")]
+    public AIDirector director;
+    public ZombiePopulationManager populationManager;
 
     // State
     public int CurrentWave { get; private set; }
-    public int ZombiesAlive { get; private set; }
     public int ZombiesKilled { get; private set; }
-    public int TotalZombiesThisWave { get; private set; }
-    public bool IsWaveActive { get; private set; }
+    public int TotalZombiesKilled { get; private set; }
     public bool IsGameOver { get; private set; }
     public bool IsVictory { get; private set; }
+    public float SurvivalTime { get; private set; }
 
     // Events
     public event System.Action<int> OnWaveStart;
     public event System.Action<int> OnWaveComplete;
     public event System.Action OnGameOver;
     public event System.Action OnVictory;
-    public event System.Action<int, int> OnZombieCountChanged;
+    public event System.Action<int> OnZombieKilled;
 
-    private List<GameObject> activeZombies = new List<GameObject>();
-    private int zombiesToSpawn;
-    private bool isSpawning;
+    private bool initialized = false;
 
     void Awake()
     {
@@ -55,193 +63,234 @@ public class GameManager : MonoBehaviourPunCallbacks
 
     void Start()
     {
-        if (PhotonNetwork.IsMasterClient)
+        StartCoroutine(Initialize());
+    }
+
+    IEnumerator Initialize()
+    {
+        yield return new WaitForSeconds(0.5f);
+
+        // Find or create AI Director
+        director = AIDirector.Instance;
+        if (director == null)
         {
-            StartCoroutine(StartFirstWave());
+            GameObject dirObj = new GameObject("AIDirector");
+            director = dirObj.AddComponent<AIDirector>();
+        }
+
+        // Find or create Population Manager if using dynamic mode
+        if (useDynamicPopulation)
+        {
+            populationManager = ZombiePopulationManager.Instance;
+            if (populationManager == null)
+            {
+                GameObject popObj = new GameObject("ZombiePopulationManager");
+                populationManager = popObj.AddComponent<ZombiePopulationManager>();
+                
+                // Copy zombie prefabs
+                if (zombiePrefabs != null && zombiePrefabs.Length > 0)
+                {
+                    populationManager.commonZombies = zombiePrefabs;
+                }
+            }
+
+            // Subscribe to population manager events
+            populationManager.OnHordeStarted += () => Debug.Log("[GameManager] HORDE STARTED!");
+            populationManager.OnHordeEnded += () => Debug.Log("[GameManager] Horde ended, catching breath...");
+        }
+
+        // Start traditional waves if enabled
+        if (useTraditionalWaves && !useDynamicPopulation)
+        {
+            if (PhotonNetwork.IsMasterClient || !PhotonNetwork.IsConnected)
+            {
+                StartCoroutine(WaveLoop());
+            }
+        }
+
+        // Subscribe to zombie deaths for tracking
+        ZombieHealth.OnAnyZombieDeath += HandleZombieDeath;
+
+        initialized = true;
+        Debug.Log($"[GameManager] Initialized. Dynamic: {useDynamicPopulation}, Waves: {useTraditionalWaves}");
+    }
+
+    void OnDestroy()
+    {
+        ZombieHealth.OnAnyZombieDeath -= HandleZombieDeath;
+    }
+
+    void Update()
+    {
+        if (!initialized || IsGameOver) return;
+
+        SurvivalTime += Time.deltaTime;
+
+        // Check for game over
+        if (Time.frameCount % 60 == 0) // Check every second
+        {
+            CheckGameOver();
         }
     }
 
-    IEnumerator StartFirstWave()
+    void HandleZombieDeath()
     {
-        yield return new WaitForSeconds(waveStartDelay);
-        StartWave();
+        ZombiesKilled++;
+        TotalZombiesKilled++;
+        OnZombieKilled?.Invoke(TotalZombiesKilled);
     }
 
-    [PunRPC]
-    void RPC_StartWave(int wave, int zombieCount)
-    {
-        CurrentWave = wave;
-        TotalZombiesThisWave = zombieCount;
-        ZombiesAlive = 0;
-        IsWaveActive = true;
+    #region Traditional Wave System
 
-        OnWaveStart?.Invoke(CurrentWave);
-        Debug.Log($"[GameManager] Wave {CurrentWave} started! Zombies: {zombieCount}");
+    IEnumerator WaveLoop()
+    {
+        yield return new WaitForSeconds(5f); // Initial delay
+
+        while (!IsGameOver)
+        {
+            // Wait for director to say it's a good time
+            while (director != null && !director.IsGoodTimeForWave())
+            {
+                yield return new WaitForSeconds(1f);
+            }
+
+            StartWave();
+
+            // Wait for wave to complete
+            yield return new WaitUntil(() => GetAliveZombieCount() == 0 || IsGameOver);
+
+            if (IsGameOver) break;
+
+            WaveComplete();
+
+            // Check victory
+            if (!survivalMode && CurrentWave >= wavesToWin)
+            {
+                Victory();
+                break;
+            }
+
+            // Cooldown between waves
+            float cooldown = director != null ? director.GetWaveCooldown(timeBetweenWaves) : timeBetweenWaves;
+            yield return new WaitForSeconds(cooldown);
+        }
     }
 
     void StartWave()
     {
-        if (!PhotonNetwork.IsMasterClient) return;
-
         CurrentWave++;
-        int playerCount = PhotonNetwork.CurrentRoom.PlayerCount;
-        int zombieCount = startingZombies + (zombiesPerWave * (CurrentWave - 1)) + (zombiesPerPlayer * playerCount);
+        ZombiesKilled = 0;
 
-        TotalZombiesThisWave = zombieCount;
-        zombiesToSpawn = zombieCount;
-        ZombiesAlive = 0;
-        IsWaveActive = true;
+        int playerCount = PhotonNetwork.IsConnected ? PhotonNetwork.CurrentRoom.PlayerCount : 1;
+        int zombieCount = baseZombiesPerWave + (zombiesPerWave * (CurrentWave - 1)) + (playerCount * 2);
 
-        // Sync to all clients
-        photonView.RPC("RPC_StartWave", RpcTarget.All, CurrentWave, zombieCount);
-
-        // Start spawning
-        StartCoroutine(SpawnZombies());
-    }
-
-    IEnumerator SpawnZombies()
-    {
-        isSpawning = true;
-
-        while (zombiesToSpawn > 0)
+        // Apply director modifier
+        if (director != null)
         {
-            SpawnZombie();
-            zombiesToSpawn--;
-            yield return new WaitForSeconds(spawnInterval);
+            zombieCount = Mathf.RoundToInt(zombieCount * director.GetZombieCountMultiplier());
         }
 
-        isSpawning = false;
+        Debug.Log($"[GameManager] Wave {CurrentWave}: {zombieCount} zombies");
+
+        if (PhotonNetwork.IsConnected)
+        {
+            photonView.RPC("RPC_WaveStart", RpcTarget.All, CurrentWave, zombieCount);
+        }
+        else
+        {
+            OnWaveStart?.Invoke(CurrentWave);
+        }
+
+        StartCoroutine(SpawnWaveZombies(zombieCount));
+    }
+
+    IEnumerator SpawnWaveZombies(int count)
+    {
+        float interval = 0.5f;
+        if (director != null)
+        {
+            interval = 0.5f / director.GetSpawnRateMultiplier();
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            SpawnZombie();
+            yield return new WaitForSeconds(interval);
+        }
     }
 
     void SpawnZombie()
     {
-        if (zombieSpawnPoints == null || zombieSpawnPoints.Length == 0)
+        if (zombiePrefabs == null || zombiePrefabs.Length == 0) return;
+        if (zombieSpawnPoints == null || zombieSpawnPoints.Length == 0) return;
+
+        Transform sp = zombieSpawnPoints[Random.Range(0, zombieSpawnPoints.Length)];
+        GameObject prefab = zombiePrefabs[Random.Range(0, zombiePrefabs.Length)];
+
+        Vector3 pos = sp.position + new Vector3(Random.Range(-3f, 3f), 0, Random.Range(-3f, 3f));
+
+        if (PhotonNetwork.IsConnected)
         {
-            Debug.LogWarning("[GameManager] No zombie spawn points set!");
-            return;
+            PhotonNetwork.Instantiate(prefab.name, pos, sp.rotation);
         }
-
-        if (zombiePrefabs == null || zombiePrefabs.Length == 0)
+        else
         {
-            Debug.LogWarning("[GameManager] No zombie prefabs set!");
-            return;
+            Instantiate(prefab, pos, sp.rotation);
         }
-
-        // Random spawn point
-        Transform spawnPoint = zombieSpawnPoints[Random.Range(0, zombieSpawnPoints.Length)];
-
-        // Random zombie type
-        GameObject zombiePrefab = zombiePrefabs[Random.Range(0, zombiePrefabs.Length)];
-
-        // Spawn with offset
-        Vector3 spawnPos = spawnPoint.position + new Vector3(
-            Random.Range(-2f, 2f), 0, Random.Range(-2f, 2f));
-
-        GameObject zombie = PhotonNetwork.Instantiate("Zombies/" + zombiePrefab.name,
-            spawnPos, spawnPoint.rotation);
-
-        ZombiesAlive++;
-        photonView.RPC("RPC_UpdateZombieCount", RpcTarget.All, ZombiesAlive, ZombiesKilled);
-
-        // Subscribe to death event
-        ZombieHealth health = zombie.GetComponent<ZombieHealth>();
-        if (health != null)
-        {
-            health.OnDeath += () => OnZombieDied(zombie);
-        }
-
-        activeZombies.Add(zombie);
-    }
-
-    void OnZombieDied(GameObject zombie)
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-
-        activeZombies.Remove(zombie);
-        ZombiesAlive--;
-        ZombiesKilled++;
-
-        photonView.RPC("RPC_UpdateZombieCount", RpcTarget.All, ZombiesAlive, ZombiesKilled);
-
-        // Check wave complete
-        if (ZombiesAlive <= 0 && zombiesToSpawn <= 0 && !isSpawning)
-        {
-            WaveComplete();
-        }
-    }
-
-    [PunRPC]
-    void RPC_UpdateZombieCount(int alive, int killed)
-    {
-        ZombiesAlive = alive;
-        ZombiesKilled = killed;
-        OnZombieCountChanged?.Invoke(ZombiesAlive, ZombiesKilled);
     }
 
     void WaveComplete()
     {
-        if (!PhotonNetwork.IsMasterClient) return;
-
-        IsWaveActive = false;
-        photonView.RPC("RPC_WaveComplete", RpcTarget.All, CurrentWave);
-
-        // Check victory
-        if (maxWaves > 0 && CurrentWave >= maxWaves)
+        if (PhotonNetwork.IsConnected)
         {
-            Victory();
-            return;
+            photonView.RPC("RPC_WaveComplete", RpcTarget.All, CurrentWave);
+        }
+        else
+        {
+            OnWaveComplete?.Invoke(CurrentWave);
         }
 
-        // Start next wave after delay
-        StartCoroutine(StartNextWaveAfterDelay());
+        Debug.Log($"[GameManager] Wave {CurrentWave} complete!");
+    }
+
+    [PunRPC]
+    void RPC_WaveStart(int wave, int zombies)
+    {
+        CurrentWave = wave;
+        OnWaveStart?.Invoke(wave);
     }
 
     [PunRPC]
     void RPC_WaveComplete(int wave)
     {
-        IsWaveActive = false;
         OnWaveComplete?.Invoke(wave);
-        Debug.Log($"[GameManager] Wave {wave} complete!");
     }
 
-    IEnumerator StartNextWaveAfterDelay()
-    {
-        yield return new WaitForSeconds(timeBetweenWaves);
-        StartWave();
-    }
+    #endregion
 
-    void Victory()
-    {
-        IsVictory = true;
-        IsGameOver = true;
-        photonView.RPC("RPC_Victory", RpcTarget.All);
-    }
+    #region Game State
 
-    [PunRPC]
-    void RPC_Victory()
+    int GetAliveZombieCount()
     {
-        IsVictory = true;
-        IsGameOver = true;
-        OnVictory?.Invoke();
-        Debug.Log("[GameManager] Victory! All waves completed!");
+        if (populationManager != null)
+        {
+            return populationManager.TotalZombiesAlive;
+        }
+
+        return FindObjectsByType<ZombieHealth>(FindObjectsSortMode.None)
+            .Count(z => !z.IsDead);
     }
 
     public void CheckGameOver()
     {
-        if (!PhotonNetwork.IsMasterClient) return;
+        if (IsGameOver) return;
+        if (PhotonNetwork.IsConnected && !PhotonNetwork.IsMasterClient) return;
 
-        // Check if all players are dead
-        PlayerHealth[] players = FindObjectsOfType<PlayerHealth>();
-        bool allDead = true;
+        PlayerHealth[] players = FindObjectsByType<PlayerHealth>(FindObjectsSortMode.None);
+        
+        if (players.Length == 0) return;
 
-        foreach (PlayerHealth player in players)
-        {
-            if (!player.IsDead)
-            {
-                allDead = false;
-                break;
-            }
-        }
+        bool allDead = players.All(p => p.IsDead);
 
         if (allDead)
         {
@@ -252,7 +301,34 @@ public class GameManager : MonoBehaviourPunCallbacks
     void GameOver()
     {
         IsGameOver = true;
-        photonView.RPC("RPC_GameOver", RpcTarget.All);
+
+        if (PhotonNetwork.IsConnected)
+        {
+            photonView.RPC("RPC_GameOver", RpcTarget.All);
+        }
+        else
+        {
+            OnGameOver?.Invoke();
+        }
+
+        Debug.Log($"[GameManager] GAME OVER! Survived {SurvivalTime:F0}s, Killed {TotalZombiesKilled} zombies");
+    }
+
+    void Victory()
+    {
+        IsVictory = true;
+        IsGameOver = true;
+
+        if (PhotonNetwork.IsConnected)
+        {
+            photonView.RPC("RPC_Victory", RpcTarget.All);
+        }
+        else
+        {
+            OnVictory?.Invoke();
+        }
+
+        Debug.Log("[GameManager] VICTORY!");
     }
 
     [PunRPC]
@@ -260,37 +336,82 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         IsGameOver = true;
         OnGameOver?.Invoke();
-        Debug.Log("[GameManager] Game Over! All players died.");
+    }
+
+    [PunRPC]
+    void RPC_Victory()
+    {
+        IsVictory = true;
+        IsGameOver = true;
+        OnVictory?.Invoke();
+    }
+
+    #endregion
+
+    #region Public Methods
+
+    public void TriggerHorde()
+    {
+        if (director != null)
+        {
+            director.TriggerHorde();
+        }
+        else if (populationManager != null)
+        {
+            populationManager.TriggerHorde();
+        }
+    }
+
+    public void TriggerStealth()
+    {
+        if (populationManager != null)
+        {
+            populationManager.TriggerStealth();
+        }
+    }
+
+    public float GetItemDropMultiplier()
+    {
+        if (director != null)
+        {
+            return director.GetItemDropMultiplier();
+        }
+        return 1f;
     }
 
     public void RestartGame()
     {
-        if (!PhotonNetwork.IsMasterClient) return;
+        if (PhotonNetwork.IsConnected && !PhotonNetwork.IsMasterClient) return;
 
-        // Reset state
-        CurrentWave = 0;
-        ZombiesAlive = 0;
-        ZombiesKilled = 0;
-        IsGameOver = false;
-        IsVictory = false;
-
-        // Destroy all zombies
-        foreach (GameObject zombie in activeZombies)
+        if (PhotonNetwork.IsConnected)
         {
-            if (zombie != null)
-            {
-                PhotonNetwork.Destroy(zombie);
-            }
+            PhotonNetwork.LoadLevel(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
         }
-        activeZombies.Clear();
-
-        // Reload scene
-        PhotonNetwork.LoadLevel(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+        else
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene(
+                UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+        }
     }
 
-    public void ReturnToMenu()
+    #endregion
+
+    // Debug UI
+    void OnGUI()
     {
-        PhotonNetwork.LeaveRoom();
-        UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+        if (!Application.isPlaying) return;
+        if (PhotonNetwork.IsConnected && !PhotonNetwork.IsMasterClient) return;
+
+        GUILayout.BeginArea(new Rect(10, 380, 250, 100));
+        GUILayout.BeginVertical("box");
+
+        GUILayout.Label("<b>Game Manager</b>");
+        GUILayout.Label($"Mode: {(useDynamicPopulation ? "Dynamic" : "Waves")}");
+        GUILayout.Label($"Survival Time: {SurvivalTime:F0}s");
+        GUILayout.Label($"Total Kills: {TotalZombiesKilled}");
+        if (useTraditionalWaves) GUILayout.Label($"Wave: {CurrentWave}");
+
+        GUILayout.EndVertical();
+        GUILayout.EndArea();
     }
 }

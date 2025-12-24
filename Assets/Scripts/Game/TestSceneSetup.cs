@@ -1,4 +1,5 @@
 using UnityEngine;
+using Photon.Pun;
 
 /// <summary>
 /// Simple test scene setup for single-player testing in browser.
@@ -21,6 +22,22 @@ public class TestSceneSetup : MonoBehaviour
 
     void Start()
     {
+        // Skip if NetworkPlayerSpawner will handle player spawning
+        if (FindFirstObjectByType<NetworkPlayerSpawner>() != null)
+        {
+            Debug.Log("[TestSceneSetup] NetworkPlayerSpawner found - disabling single player setup");
+            enabled = false;
+            return;
+        }
+
+        // Skip if connected to Photon (multiplayer mode)
+        if (PhotonNetwork.IsConnected)
+        {
+            Debug.Log("[TestSceneSetup] Photon connected - disabling single player setup");
+            enabled = false;
+            return;
+        }
+
         if (createGround)
         {
             CreateSimpleGround();
@@ -38,19 +55,17 @@ public class TestSceneSetup : MonoBehaviour
         ground.layer = LayerMask.NameToLayer("Default");
         ground.isStatic = true;
 
-        // Ensure collider exists (CreatePrimitive adds one, but let's be safe)
         BoxCollider col = ground.GetComponent<BoxCollider>();
         if (col == null)
         {
             col = ground.AddComponent<BoxCollider>();
         }
 
-        // Give it a basic color
         Renderer renderer = ground.GetComponent<Renderer>();
         if (renderer != null)
         {
             renderer.material = new Material(Shader.Find("Standard"));
-            renderer.material.color = new Color(0.3f, 0.4f, 0.3f); // Greenish ground
+            renderer.material.color = new Color(0.3f, 0.4f, 0.3f);
         }
 
         Debug.Log($"[TestSceneSetup] Ground created at Y=0 with collider. Size: {groundSize}");
@@ -62,40 +77,32 @@ public class TestSceneSetup : MonoBehaviour
 
         if (characterPrefab != null)
         {
-            // Instantiate the provided character
             player = Instantiate(characterPrefab, spawnPosition, Quaternion.identity);
             player.name = "Player";
         }
         else
         {
-            // Create a capsule placeholder if no character assigned
             Debug.LogWarning("[TestSceneSetup] No character prefab assigned! Creating capsule placeholder.");
             Debug.LogWarning("[TestSceneSetup] Drag 'Rifle Idle 1.fbx' from Assets/animations/swat into the Character Prefab slot.");
 
             player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             player.name = "Player";
             player.transform.position = spawnPosition;
-
-            // Remove the collider (CharacterController will handle collision)
             Destroy(player.GetComponent<Collider>());
         }
 
-        // Add the controller if not present
         SimpleThirdPersonController controller = player.GetComponent<SimpleThirdPersonController>();
         if (controller == null)
         {
             controller = player.AddComponent<SimpleThirdPersonController>();
         }
 
-        // Setup the Animator with SwatAnimator controller
         Animator animator = player.GetComponentInChildren<Animator>();
         if (animator != null)
         {
-            // Try to load the SwatAnimator controller
             RuntimeAnimatorController swatController = Resources.Load<RuntimeAnimatorController>("SwatAnimator");
             if (swatController == null)
             {
-                // Try loading from the animations folder path
                 Debug.Log("[TestSceneSetup] Animator found. Make sure SwatAnimator.controller is assigned in the Animator component.");
             }
         }

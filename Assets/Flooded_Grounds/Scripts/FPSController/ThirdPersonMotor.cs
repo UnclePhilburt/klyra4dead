@@ -25,6 +25,12 @@ public class ThirdPersonMotor : MonoBehaviourPunCallbacks, IPunObservable
     [Tooltip("Drag SwatAnimator.controller here")]
     public RuntimeAnimatorController animatorController;
 
+    [Header("Footstep Noise (Stealth)")]
+    [Tooltip("Time between footstep noises when walking")]
+    public float walkNoiseInterval = 0.8f;
+    [Tooltip("Time between footstep noises when running")]
+    public float runNoiseInterval = 0.35f;
+
     CharacterController character;
     Animator animator;
     GameObject characterModel;
@@ -46,6 +52,8 @@ public class ThirdPersonMotor : MonoBehaviourPunCallbacks, IPunObservable
     public float mouseSmoothing = 0.5f;
 
     [Header("Aiming")]
+    public float aimSpineOffset = 10f; // Raise spine when aiming (more upright)
+    public float aimSpineYaw = 0.3f; // Left/right spine rotation multiplier when aiming
     public float aimFOV = 45f;
     public float aimTransitionSpeed = 10f;
     [Range(0.3f, 1f)]
@@ -57,6 +65,9 @@ public class ThirdPersonMotor : MonoBehaviourPunCallbacks, IPunObservable
     bool isAiming = false;
     float defaultFOV;
     PlayerKick playerKick;
+
+    // Footstep noise timer
+    float nextFootstepTime;
 
     // Public property for UI
     public bool IsAiming => isAiming;
@@ -70,7 +81,7 @@ public class ThirdPersonMotor : MonoBehaviourPunCallbacks, IPunObservable
     private float lerpSpeed = 10f;
 
     // Check if this is the local player
-    public bool IsLocalPlayer => !PhotonNetwork.IsConnected || photonView.IsMine;
+    public bool IsLocalPlayer => !PhotonNetwork.IsConnected || photonView == null || photonView.IsMine;
 
     void Start()
     {
@@ -158,9 +169,9 @@ public class ThirdPersonMotor : MonoBehaviourPunCallbacks, IPunObservable
         cameraLookAt.SetParent(cameraPivot);
         cameraLookAt.localPosition = new Vector3(0, cameraHeight, 0);
 
-        // Disable any existing cameras
-        Camera[] allCams = FindObjectsOfType<Camera>();
-        foreach (Camera c in allCams)
+        // Only disable cameras that are children of THIS player (not other players' cameras)
+        Camera[] myCams = GetComponentsInChildren<Camera>(true);
+        foreach (Camera c in myCams)
         {
             c.gameObject.SetActive(false);
         }
@@ -308,6 +319,12 @@ public class ThirdPersonMotor : MonoBehaviourPunCallbacks, IPunObservable
             transform.rotation = Quaternion.Euler(0, yaw + aimYawOffset, 0);
         }
 
+        // === FOOTSTEP NOISE FOR STEALTH SYSTEM ===
+        if (isMoving && Time.time >= nextFootstepTime)
+        {
+            MakeFootstepNoise(isRunning);
+        }
+
         // Smooth FOV transition for ADS
         if (cinemachineCam != null)
         {
@@ -334,6 +351,24 @@ public class ThirdPersonMotor : MonoBehaviourPunCallbacks, IPunObservable
         {
             Cursor.lockState = Cursor.lockState == CursorLockMode.Locked ? CursorLockMode.None : CursorLockMode.Locked;
             Cursor.visible = Cursor.lockState != CursorLockMode.Locked;
+        }
+    }
+
+    void MakeFootstepNoise(bool isRunning)
+    {
+        if (NoiseManager.Instance == null) return;
+
+        if (isRunning)
+        {
+            // Running = loud footsteps, zombies hear from 20m
+            NoiseManager.Instance.MakeNoise(transform.position, NoiseManager.NoiseType.Run, transform);
+            nextFootstepTime = Time.time + runNoiseInterval;
+        }
+        else
+        {
+            // Walking = quiet footsteps, zombies hear from ~5m
+            NoiseManager.Instance.MakeNoise(transform.position, NoiseManager.NoiseType.Walk, transform);
+            nextFootstepTime = Time.time + walkNoiseInterval;
         }
     }
 
@@ -433,8 +468,8 @@ public class ThirdPersonMotor : MonoBehaviourPunCallbacks, IPunObservable
         if (isAiming)
         {
             // When aiming, only adjust pitch (up/down) - keep torso straight
-            float spinePitch = Mathf.Clamp(-pitch * 0.2f, -15f, 15f);
-            float chestPitch = Mathf.Clamp(-pitch * 0.3f, -20f, 20f);
+            float spinePitch = Mathf.Clamp(-pitch * 0.15f + aimSpineOffset, -10f, 20f); // Offset raises spine
+            float chestPitch = Mathf.Clamp(-pitch * 0.2f + aimSpineOffset * 0.5f, -10f, 15f); // Less forward lean
 
             if (spineBone != null)
             {

@@ -124,6 +124,10 @@ GameObject:
   - component: {fileID: 1207085064747422678}
   - component: {fileID: 6874094329799377853}
   - component: {fileID: 5404335426010143098}
+  - component: {fileID: 1234567890123456789}
+  - component: {fileID: 5348235849329343933}
+  - component: {fileID: 8450405242158372884}
+  - component: {fileID: 1994113634946300767}
   m_Layer: 0
   m_Name: NetworkPlayer
   m_TagString: Untagged
@@ -252,7 +256,11 @@ MonoBehaviour:
   cameraDamping: 0.1
   characterPrefab: {fileID: 919132149155446097, guid: 4a04ac936245e4066a57d6a13a7652d4, type: 3}
   animatorController: {fileID: 9100000, guid: c85a89b2b7516480bac554fa9bceeaa9, type: 2}
+  walkNoiseInterval: 0.8
+  runNoiseInterval: 0.35
   mouseSmoothing: 0.5
+  aimSpineOffset: -9.5
+  aimSpineYaw: 0.3
   aimFOV: 45
   aimTransitionSpeed: 10
   aimSpeedMultiplier: 0.65
@@ -278,6 +286,7 @@ MonoBehaviour:
   reloadSound: {fileID: 8300000, guid: c34d25f6474fc4bb99b67797edd16170, type: 3}
   muzzleFlashPrefab: {fileID: 0}
   hitEffectPrefab: {fileID: 0}
+  firePoint: {fileID: 0}
 --- !u!114 &8797388104287228540
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -295,6 +304,8 @@ MonoBehaviour:
   rotationOffset: {x: -90.7, y: 89.9, z: 6.43}
   weaponScale: 0.18
   autoFindWeaponName: assault1
+  firePointOffset: {x: 0, y: 0, z: 3}
+  muzzleFlashPrefab: {fileID: 0}
 --- !u!114 &1207085064747422678
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -335,6 +346,7 @@ MonoBehaviour:
   ObservedComponents:
   - {fileID: 8364559502686202522}
   - {fileID: 5404335426010143098}
+  - {fileID: 1234567890123456789}
   sceneViewId: 0
   InstantiationId: 0
   isRuntimeInstantiated: 0
@@ -349,8 +361,91 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 627855c7f81362d41938ffe0b1475957, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: PhotonUnityNetworking::Photon.Pun.PhotonTransformView
+  m_EditorClassIdentifier: 
   m_SynchronizePosition: 1
   m_SynchronizeRotation: 1
   m_SynchronizeScale: 0
   m_UseLocal: 1
+--- !u!114 &1234567890123456789
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4224045956968830674}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 118c6193609e742839cf2600a2ce61a5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxHealth: 100
+  currentHealth: 100
+  downedHealth: 50
+  bleedOutTime: 30
+  reviveTime: 3
+  bloodEffect: {fileID: 0}
+  hurtSound: {fileID: 0}
+  deathSound: {fileID: 0}
+  reviveSound: {fileID: 0}
+--- !u!114 &5348235849329343933
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4224045956968830674}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a8326c4f9228409bb9296f249ead3b8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerStats
+  stressDecayRate: 0.1
+  damageStressMultiplier: 0.02
+  nearbyZombieStress: 0.05
+  combatStressDecay: 0.05
+--- !u!114 &8450405242158372884
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4224045956968830674}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ed2b1ad642394e859aad6d42af00a5d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Flashlight
+  range: 30
+  spotAngle: 62.4
+  intensity: 2.77
+  lightColor: {r: 1, g: 0.95, b: 0.8, a: 1}
+  headOffset: {x: 0, y: 3.98, z: 0.15}
+  headBoneName: Head
+  useBattery: 0
+  batteryLife: 300
+  currentBattery: 0
+  lowBatteryThreshold: 0.2
+  flickerSpeed: 15
+  flickerIntensity: 0.5
+  toggleKey: 120
+  toggleSound: {fileID: 0}
+--- !u!114 &1994113634946300767
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4224045956968830674}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 67c9d0f0091c54656952978dd5a23599, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerVisibility
+  baseVisibility: 0.3
+  maxVisibility: 1
+  updateInterval: 0.2
+  lightCheckRadius: 30
+  lightBlockingLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  showDebug: 0

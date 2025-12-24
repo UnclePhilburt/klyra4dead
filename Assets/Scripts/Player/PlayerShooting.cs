@@ -18,6 +18,7 @@ public class PlayerShooting : MonoBehaviourPunCallbacks
     public AudioClip reloadSound;
     public GameObject muzzleFlashPrefab;
     public GameObject hitEffectPrefab;
+    public Transform firePoint;
 
     // State
     private int currentAmmo;
@@ -50,7 +51,7 @@ public class PlayerShooting : MonoBehaviourPunCallbacks
     }
 
     // Check if this is the local player
-    private bool IsLocalPlayer => !PhotonNetwork.IsConnected || photonView.IsMine;
+    private bool IsLocalPlayer => !PhotonNetwork.IsConnected || photonView == null || photonView.IsMine;
 
     void Update()
     {
@@ -112,7 +113,15 @@ public class PlayerShooting : MonoBehaviourPunCallbacks
             audioSource.PlayOneShot(reloadSound);
         }
 
+        // Reloading makes some noise too
+        if (NoiseManager.Instance != null)
+        {
+            NoiseManager.Instance.MakeNoise(transform.position, NoiseManager.NoiseType.Reload, transform);
+        }
+
+        #if UNITY_EDITOR
         Debug.Log("[Shooting] Reloading...");
+        #endif
     }
 
     void FinishReload()
@@ -127,7 +136,9 @@ public class PlayerShooting : MonoBehaviourPunCallbacks
         // Unlimited reserve ammo for now - just refill magazine
         currentAmmo = magazineSize;
 
+        #if UNITY_EDITOR
         Debug.Log($"[Shooting] Reload complete. Ammo: {currentAmmo}/{magazineSize}");
+        #endif
     }
 
     void Shoot()
@@ -154,6 +165,25 @@ public class PlayerShooting : MonoBehaviourPunCallbacks
             audioSource.PlayOneShot(shootSound);
         }
 
+        // Spawn muzzle flash (networked)
+        if (muzzleFlashPrefab != null && firePoint != null)
+        {
+            if (PhotonNetwork.IsConnected && photonView != null)
+            {
+                photonView.RPC("RPC_MuzzleFlash", RpcTarget.All);
+            }
+            else
+            {
+                SpawnMuzzleFlash();
+            }
+        }
+
+        // MAKE NOISE - Zombies will hear this from far away!
+        if (NoiseManager.Instance != null)
+        {
+            NoiseManager.Instance.MakeNoise(transform.position, NoiseManager.NoiseType.Gunshot, transform);
+        }
+
         // Raycast from center of screen
         Ray ray = playerCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
         RaycastHit hit;
@@ -162,7 +192,9 @@ public class PlayerShooting : MonoBehaviourPunCallbacks
 
         if (Physics.Raycast(ray, out hit, range))
         {
+            #if UNITY_EDITOR
             Debug.Log($"[Shooting] Hit: {hit.collider.gameObject.name}");
+            #endif
 
             // Check for zombie
             ZombieHealth zombieHealth = hit.collider.GetComponent<ZombieHealth>();
@@ -177,12 +209,16 @@ public class PlayerShooting : MonoBehaviourPunCallbacks
                 bool isHeadshot = hit.collider.name.ToLower().Contains("head");
                 float finalDamage = isHeadshot ? 9999f : damage;
 
-                zombieHealth.TakeDamageLocal(finalDamage, ray.direction, hit.point);
+                // Use network-aware damage method with our PhotonView ID
+                int attackerID = (PhotonNetwork.IsConnected && photonView != null) ? photonView.ViewID : -1;
+                zombieHealth.Damage(finalDamage, attackerID);
 
+                #if UNITY_EDITOR
                 if (isHeadshot)
                     Debug.Log("[Shooting] HEADSHOT! Instant kill!");
                 else
                     Debug.Log($"[Shooting] Dealt {damage} damage to zombie");
+                #endif
             }
 
             // Spawn hit effect
@@ -192,5 +228,19 @@ public class PlayerShooting : MonoBehaviourPunCallbacks
                 Destroy(hitEffect, 2f);
             }
         }
+    }
+
+    void SpawnMuzzleFlash()
+    {
+        if (muzzleFlashPrefab == null || firePoint == null) return;
+
+        GameObject flash = Instantiate(muzzleFlashPrefab, firePoint.position, firePoint.rotation);
+        Destroy(flash, 0.15f);
+    }
+
+    [PunRPC]
+    void RPC_MuzzleFlash()
+    {
+        SpawnMuzzleFlash();
     }
 }

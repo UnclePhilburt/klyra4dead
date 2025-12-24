@@ -23,6 +23,7 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
     // Events
     public event Action<float, float> OnHealthChanged;
     public event Action OnDeath;
+    public static event Action OnAnyZombieDeath;
     public event Action<int> OnDamaged; // Passes attacker ID
 
     private AudioSource audioSource;
@@ -50,6 +51,9 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
     [PunRPC]
     public void TakeDamage(float damage, int attackerViewID)
     {
+        #if UNITY_EDITOR
+        Debug.Log($"[ZombieHealth] TakeDamage RPC received: {damage} dmg, health before: {currentHealth}, IsDead: {IsDead}");
+        #endif
         if (IsDead) return;
 
         currentHealth -= damage;
@@ -78,7 +82,9 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
             audioSource.PlayOneShot(hurtSound);
         }
 
+        #if UNITY_EDITOR
         Debug.Log($"[ZombieHealth] Zombie took {damage} damage, health: {currentHealth}");
+        #endif
 
         if (currentHealth <= 0)
         {
@@ -88,13 +94,33 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
 
     public void Damage(float damage, int attackerViewID = -1)
     {
-        if (!PhotonNetwork.IsConnected || photonView.IsMine)
+        #if UNITY_EDITOR
+        Debug.Log($"[ZombieHealth] Damage called: {damage} dmg, attacker: {attackerViewID}, IsMine: {photonView != null && photonView.IsMine}, Connected: {PhotonNetwork.IsConnected}");
+        #endif
+
+        if (!PhotonNetwork.IsConnected)
         {
+            // Offline mode - process locally
+            #if UNITY_EDITOR
+            Debug.Log("[ZombieHealth] Offline mode - processing locally");
+            #endif
+            TakeDamage(damage, attackerViewID);
+        }
+        else if (photonView == null || photonView.IsMine)
+        {
+            // I own this zombie (master client) - process locally
+            #if UNITY_EDITOR
+            Debug.Log("[ZombieHealth] I own zombie - processing locally");
+            #endif
             TakeDamage(damage, attackerViewID);
         }
         else
         {
-            photonView.RPC("TakeDamage", RpcTarget.All, damage, attackerViewID);
+            // I don't own this zombie - send damage to owner (master client)
+            #if UNITY_EDITOR
+            Debug.Log("[ZombieHealth] Sending RPC to MasterClient");
+            #endif
+            photonView.RPC("TakeDamage", RpcTarget.MasterClient, damage, attackerViewID);
         }
     }
 
@@ -121,7 +147,9 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
             audioSource.PlayOneShot(hurtSound);
         }
 
+        #if UNITY_EDITOR
         Debug.Log($"[ZombieHealth] Zombie took {damage} damage, health: {currentHealth}");
+        #endif
 
         if (currentHealth <= 0)
         {
@@ -151,6 +179,11 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
         {
             Vector3 force = lastHitDirection * 50f;
             ragdoll.EnableRagdollWithForce(force, lastHitPoint);
+        }
+        else // Enable ragdoll instead of death animation
+        if (ragdoll != null)
+        {
+            ragdoll.EnableRagdoll();
         }
         else if (animator != null)
         {
@@ -182,8 +215,11 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
         }
 
         OnDeath?.Invoke();
+        OnAnyZombieDeath?.Invoke();
 
+        #if UNITY_EDITOR
         Debug.Log("[ZombieHealth] Zombie died!");
+        #endif
 
         Destroy(gameObject, 5f);
     }
@@ -205,7 +241,12 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
             audioSource.PlayOneShot(deathSound);
         }
 
-        if (animator != null)
+        // Enable ragdoll instead of death animation
+        if (ragdoll != null)
+        {
+            ragdoll.EnableRagdoll();
+        }
+        else if (animator != null)
         {
             animator.SetTrigger("Die");
         }
@@ -229,6 +270,7 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
         }
 
         OnDeath?.Invoke();
+        OnAnyZombieDeath?.Invoke();
 
         // Award points to killer
         if (killerViewID != -1)
@@ -244,10 +286,12 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
             }
         }
 
+        #if UNITY_EDITOR
         Debug.Log($"[ZombieHealth] Zombie died! Killer: {killerViewID}");
+        #endif
 
         // Spawn drops
-        if (photonView.IsMine && possibleDrops.Length > 0 && UnityEngine.Random.value < dropChance)
+        if (photonView != null && photonView.IsMine && possibleDrops.Length > 0 && UnityEngine.Random.value < dropChance * (GameManager.Instance != null ? GameManager.Instance.GetItemDropMultiplier() : 1f))
         {
             int dropIndex = UnityEngine.Random.Range(0, possibleDrops.Length);
             PhotonNetwork.Instantiate("Drops/" + possibleDrops[dropIndex].name,
@@ -255,7 +299,7 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
         }
 
         // Destroy after animation
-        if (photonView.IsMine)
+        if (photonView != null && photonView.IsMine)
         {
             StartCoroutine(DestroyAfterDelay(3f));
         }
@@ -265,6 +309,44 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
     {
         yield return new WaitForSeconds(delay);
         PhotonNetwork.Destroy(gameObject);
+    }
+
+    // Called on remote clients when zombie dies via network sync
+    void OnRemoteDeath()
+    {
+        #if UNITY_EDITOR
+        Debug.Log("[ZombieHealth] Remote death triggered");
+        #endif
+
+        // Play death sound
+        if (zombieAI != null)
+        {
+            zombieAI.PlayDeathSound();
+        }
+        else if (deathSound != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(deathSound);
+        }
+
+        // Play death animation
+        // Enable ragdoll instead of death animation
+        if (ragdoll != null)
+        {
+            ragdoll.EnableRagdoll();
+        }
+        else if (animator != null)
+        {
+            animator.SetTrigger("Die");
+        }
+
+        // Disable AI and collider
+        if (zombieAI != null) zombieAI.enabled = false;
+
+        Collider col = GetComponent<Collider>();
+        if (col != null) col.enabled = false;
+
+        UnityEngine.AI.NavMeshAgent agent = GetComponent<UnityEngine.AI.NavMeshAgent>();
+        if (agent != null) agent.enabled = false;
     }
 
     public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
@@ -277,7 +359,38 @@ public class ZombieHealth : MonoBehaviourPunCallbacks, IPunObservable
         else
         {
             currentHealth = (float)stream.ReceiveNext();
+            bool wasDead = IsDead;
             IsDead = (bool)stream.ReceiveNext();
+
+            // Trigger death effects on remote clients when zombie dies
+            if (IsDead && !wasDead)
+            {
+                OnRemoteDeath();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reset health for object pooling.
+    /// </summary>
+    public void ResetHealth()
+    {
+        currentHealth = maxHealth;
+        IsDead = false;
+
+        // Re-enable components
+        if (zombieAI != null) zombieAI.enabled = true;
+
+        Collider col = GetComponent<Collider>();
+        if (col != null) col.enabled = true;
+
+        CapsuleCollider mainCol = GetComponent<CapsuleCollider>();
+        if (mainCol != null) mainCol.enabled = true;
+
+        // Reset ragdoll if present
+        if (ragdoll != null)
+        {
+            ragdoll.SetRagdollEnabled(false);
         }
     }
 }

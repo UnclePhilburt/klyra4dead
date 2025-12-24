@@ -42,11 +42,17 @@ public class ThirdPersonController : MonoBehaviourPunCallbacks
     private bool isGrounded;
     private bool isRunning;
     private bool isAiming;
+    public bool IsAiming => isAiming;
 
     // Network
     private Vector3 networkPosition;
     private Quaternion networkRotation;
     private float networkLerpSpeed = 10f;
+    private float networkCameraPitch;  // Synced vertical look angle for head/flashlight
+
+    // Head bone for flashlight sync
+    private Transform headBone;
+    public float CameraPitch => cameraVerticalAngle;  // Expose for other scripts
 
     // Animator hashes
     private int speedHash;
@@ -67,7 +73,7 @@ public class ThirdPersonController : MonoBehaviourPunCallbacks
         isAimingHash = Animator.StringToHash("IsAiming");
         jumpHash = Animator.StringToHash("Jump");
 
-        if (photonView.IsMine)
+        if (photonView == null || photonView.IsMine)
         {
             SetupLocalPlayer();
         }
@@ -122,12 +128,19 @@ public class ThirdPersonController : MonoBehaviourPunCallbacks
     {
         // Remote players don't need camera or input
         enabled = true; // Keep enabled for animation sync
+
+        // Find head bone for flashlight direction sync
+        if (animator != null)
+        {
+            headBone = animator.GetBoneTransform(HumanBodyBones.Head);
+        }
+
         Debug.Log("[ThirdPersonController] Remote player setup complete");
     }
 
     void Update()
     {
-        if (photonView.IsMine)
+        if (photonView == null || photonView.IsMine)
         {
             HandleInput();
             HandleMovement();
@@ -139,6 +152,20 @@ public class ThirdPersonController : MonoBehaviourPunCallbacks
             // Interpolate remote player position
             transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * networkLerpSpeed);
             transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * networkLerpSpeed);
+        }
+    }
+
+    // Apply head rotation after animation - for flashlight sync on remote players
+    void LateUpdate()
+    {
+        if (photonView != null && !photonView.IsMine && headBone != null)
+        {
+            // Apply the synced camera pitch to the head bone so flashlight points correctly
+            Quaternion headRotation = headBone.localRotation;
+            Vector3 euler = headRotation.eulerAngles;
+            // Blend the pitch into the head's X rotation
+            euler.x = Mathf.LerpAngle(euler.x, -networkCameraPitch, 0.7f);
+            headBone.localRotation = Quaternion.Euler(euler);
         }
     }
 
@@ -167,7 +194,7 @@ public class ThirdPersonController : MonoBehaviourPunCallbacks
 
         // Look input
         lookInput = Vector2.zero;
-        if (mouse != null)
+        if (mouse != null && mouse.rightButton != null)
         {
             lookInput = mouse.delta.ReadValue() * cameraSensitivity * 0.1f;
         }
@@ -177,9 +204,9 @@ public class ThirdPersonController : MonoBehaviourPunCallbacks
         }
 
         // Aim input
-        if (mouse != null)
+        if (mouse != null && mouse.rightButton != null)
         {
-            isAiming = mouse.rightButton.isPressed;
+            isAiming = mouse.rightButton.isPressed || Input.GetMouseButton(1);
         }
         if (gamepad != null)
         {
@@ -316,6 +343,7 @@ public class ThirdPersonController : MonoBehaviourPunCallbacks
             stream.SendNext(normalizedSpeed);
             stream.SendNext(isRunning);
             stream.SendNext(isAiming);
+            stream.SendNext(cameraVerticalAngle);  // Sync head pitch for flashlight
         }
         else
         {
@@ -324,6 +352,7 @@ public class ThirdPersonController : MonoBehaviourPunCallbacks
             float normalizedSpeed = (float)stream.ReceiveNext();
             isRunning = (bool)stream.ReceiveNext();
             isAiming = (bool)stream.ReceiveNext();
+            networkCameraPitch = (float)stream.ReceiveNext();  // Receive head pitch
 
             // Update animator for remote player with normalized speed
             if (animator != null)
@@ -337,7 +366,7 @@ public class ThirdPersonController : MonoBehaviourPunCallbacks
 
     void OnDestroy()
     {
-        if (photonView.IsMine && playerCamera != null)
+        if ((photonView == null || photonView.IsMine) && playerCamera != null)
         {
             Destroy(playerCamera.gameObject);
         }

@@ -21,6 +21,7 @@ public class PlayerHealth : MonoBehaviourPunCallbacks, IPunObservable
 
     // State
     public bool IsDead { get; private set; }
+    public float HealthPercent => maxHealth > 0 ? currentHealth / maxHealth : 0f;
     public bool IsDowned { get; private set; }
     public bool IsBeingRevived { get; private set; }
     public float ReviveProgress { get; private set; }
@@ -37,7 +38,7 @@ public class PlayerHealth : MonoBehaviourPunCallbacks, IPunObservable
     private Animator animator;
 
     // Check if this is the local player
-    private bool IsLocalPlayer => !PhotonNetwork.IsConnected || photonView.IsMine;
+    private bool IsLocalPlayer => !PhotonNetwork.IsConnected || photonView == null || photonView.IsMine;
 
     void Start()
     {
@@ -102,12 +103,14 @@ public class PlayerHealth : MonoBehaviourPunCallbacks, IPunObservable
         }
 
         string playerName = PhotonNetwork.IsConnected ? photonView.Owner.NickName : "Player";
+        #if UNITY_EDITOR
         Debug.Log($"[PlayerHealth] {playerName} took {damage} damage, health: {currentHealth}");
+        #endif
     }
 
     public void Damage(float damage, int attackerViewID = -1)
     {
-        if (!PhotonNetwork.IsConnected || photonView.IsMine)
+        if (!PhotonNetwork.IsConnected || photonView == null || photonView.IsMine)
         {
             TakeDamage(damage, attackerViewID);
         }
@@ -132,7 +135,9 @@ public class PlayerHealth : MonoBehaviourPunCallbacks, IPunObservable
 
         OnDowned?.Invoke();
         string playerName = PhotonNetwork.IsConnected ? photonView.Owner.NickName : "Player";
+        #if UNITY_EDITOR
         Debug.Log($"[PlayerHealth] {playerName} is downed!");
+        #endif
 
         // Notify all clients
         if (PhotonNetwork.IsConnected && photonView.IsMine)
@@ -161,7 +166,9 @@ public class PlayerHealth : MonoBehaviourPunCallbacks, IPunObservable
 
         string reviverName = PhotonNetwork.IsConnected && reviverPlayer.photonView != null ? reviverPlayer.photonView.Owner.NickName : "Player";
         string playerName = PhotonNetwork.IsConnected ? photonView.Owner.NickName : "Player";
+        #if UNITY_EDITOR
         Debug.Log($"[PlayerHealth] {reviverName} is reviving {playerName}");
+        #endif
     }
 
     public void UpdateRevive(float deltaTime)
@@ -204,7 +211,9 @@ public class PlayerHealth : MonoBehaviourPunCallbacks, IPunObservable
         OnHealthChanged?.Invoke(currentHealth, maxHealth);
 
         string playerName = PhotonNetwork.IsConnected ? photonView.Owner.NickName : "Player";
+        #if UNITY_EDITOR
         Debug.Log($"[PlayerHealth] {playerName} was revived!");
+        #endif
 
         // Notify all clients
         if (PhotonNetwork.IsConnected && photonView.IsMine)
@@ -235,7 +244,9 @@ public class PlayerHealth : MonoBehaviourPunCallbacks, IPunObservable
 
         OnDeath?.Invoke();
         string playerName = PhotonNetwork.IsConnected ? photonView.Owner.NickName : "Player";
+        #if UNITY_EDITOR
         Debug.Log($"[PlayerHealth] {playerName} died!");
+        #endif
 
         // Disable player control
         var controller = GetComponent<ThirdPersonController>();
@@ -253,7 +264,9 @@ public class PlayerHealth : MonoBehaviourPunCallbacks, IPunObservable
         OnHealthChanged?.Invoke(currentHealth, maxHealth);
 
         string playerName = PhotonNetwork.IsConnected ? photonView.Owner.NickName : "Player";
+        #if UNITY_EDITOR
         Debug.Log($"[PlayerHealth] {playerName} healed {amount}, health: {currentHealth}");
+        #endif
     }
 
     public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)

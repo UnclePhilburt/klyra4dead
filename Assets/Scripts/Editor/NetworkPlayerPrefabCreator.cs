@@ -66,7 +66,7 @@ public class NetworkPlayerPrefabCreator : EditorWindow
     private static GameObject FindPlayerInScene()
     {
         // Try to find by ThirdPersonMotor component
-        ThirdPersonMotor motor = FindObjectOfType<ThirdPersonMotor>();
+        ThirdPersonMotor motor = FindFirstObjectByType<ThirdPersonMotor>();
         if (motor != null)
         {
             return motor.gameObject;
@@ -187,7 +187,7 @@ public class NetworkPlayerPrefabCreator : EditorWindow
             "OK");
 
         // Create NetworkPlayerSpawner in scene if not present
-        if (FindObjectOfType<NetworkPlayerSpawner>() == null)
+        if (FindFirstObjectByType<NetworkPlayerSpawner>() == null)
         {
             if (EditorUtility.DisplayDialog("Add Spawner?",
                 "Would you like to add NetworkPlayerSpawner to the scene?",
@@ -198,7 +198,7 @@ public class NetworkPlayerPrefabCreator : EditorWindow
                 spawner.playerPrefabName = prefabName;
 
                 // Find spawn points
-                var spawnManager = FindObjectOfType<SpawnManager>();
+                var spawnManager = FindFirstObjectByType<SpawnManager>();
                 if (spawnManager != null)
                 {
                     Debug.Log("[NetworkPlayerPrefabCreator] SpawnManager found - spawner will use it automatically");

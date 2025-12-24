@@ -58,7 +58,9 @@ public class NetworkManager : MonoBehaviourPunCallbacks
     public void Connect()
     {
         IsConnecting = true;
+        #if UNITY_EDITOR
         Debug.Log("[NetworkManager] Connecting to Photon...");
+        #endif
 
         PhotonNetwork.GameVersion = gameVersion;
         PhotonNetwork.ConnectUsingSettings();
@@ -66,7 +68,9 @@ public class NetworkManager : MonoBehaviourPunCallbacks
 
     public override void OnConnectedToMaster()
     {
+        #if UNITY_EDITOR
         Debug.Log("[NetworkManager] Connected to Master Server");
+        #endif
         IsConnecting = false;
         ConnectedToMaster?.Invoke();
 
@@ -76,8 +80,13 @@ public class NetworkManager : MonoBehaviourPunCallbacks
 
     public override void OnJoinedLobby()
     {
+        #if UNITY_EDITOR
         Debug.Log("[NetworkManager] Joined Lobby");
+        #endif
         JoinedLobby?.Invoke();
+
+        // Auto-join or create a room so players are immediately in multiplayer
+        QuickPlay();
     }
 
     public void CreateRoom(string roomName)
@@ -95,7 +104,9 @@ public class NetworkManager : MonoBehaviourPunCallbacks
             IsOpen = true
         };
 
+        #if UNITY_EDITOR
         Debug.Log($"[NetworkManager] Creating room: {roomName}");
+        #endif
         PhotonNetwork.CreateRoom(roomName, options);
     }
 
@@ -107,7 +118,9 @@ public class NetworkManager : MonoBehaviourPunCallbacks
             return;
         }
 
+        #if UNITY_EDITOR
         Debug.Log($"[NetworkManager] Joining room: {roomName}");
+        #endif
         PhotonNetwork.JoinRoom(roomName);
     }
 
@@ -119,7 +132,9 @@ public class NetworkManager : MonoBehaviourPunCallbacks
             return;
         }
 
+        #if UNITY_EDITOR
         Debug.Log("[NetworkManager] Joining random room...");
+        #endif
         PhotonNetwork.JoinRandomRoom();
     }
 
@@ -131,20 +146,29 @@ public class NetworkManager : MonoBehaviourPunCallbacks
             return;
         }
 
+        #if UNITY_EDITOR
         Debug.Log("[NetworkManager] Quick Play - joining or creating room...");
+        #endif
         PhotonNetwork.JoinRandomRoom();
     }
 
     public override void OnJoinRandomFailed(short returnCode, string message)
     {
-        Debug.Log($"[NetworkManager] No random room available, creating new room...");
-        CreateRoom("Room_" + Random.Range(1000, 9999));
+        #if UNITY_EDITOR
+        Debug.Log($"[NetworkManager] No random room available, creating main room...");
+        #endif
+        // Use a fixed room name so all players join the same game
+        CreateRoom("Klyra4Dead_Main");
     }
 
     public override void OnJoinedRoom()
     {
+        #if UNITY_EDITOR
         Debug.Log($"[NetworkManager] Joined Room: {PhotonNetwork.CurrentRoom.Name}");
+        #endif
+        #if UNITY_EDITOR
         Debug.Log($"[NetworkManager] Players in room: {PhotonNetwork.CurrentRoom.PlayerCount}");
+        #endif
 
         JoinedRoom?.Invoke();
     }
@@ -163,19 +187,25 @@ public class NetworkManager : MonoBehaviourPunCallbacks
 
     public override void OnLeftRoom()
     {
+        #if UNITY_EDITOR
         Debug.Log("[NetworkManager] Left room");
+        #endif
         LeftRoom?.Invoke();
     }
 
     public override void OnPlayerEnteredRoom(Player newPlayer)
     {
+        #if UNITY_EDITOR
         Debug.Log($"[NetworkManager] Player joined: {newPlayer.NickName}");
+        #endif
         PlayerJoined?.Invoke(newPlayer);
     }
 
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
+        #if UNITY_EDITOR
         Debug.Log($"[NetworkManager] Player left: {otherPlayer.NickName}");
+        #endif
         PlayerLeft?.Invoke(otherPlayer);
     }
 
@@ -202,7 +232,9 @@ public class NetworkManager : MonoBehaviourPunCallbacks
             return;
         }
 
+        #if UNITY_EDITOR
         Debug.Log($"[NetworkManager] Starting game, loading scene: {gameSceneName}");
+        #endif
         PhotonNetwork.LoadLevel(gameSceneName);
     }
 
@@ -226,7 +258,9 @@ public class NetworkManager : MonoBehaviourPunCallbacks
             spawnRotation = spawn.rotation;
         }
 
+        #if UNITY_EDITOR
         Debug.Log($"[NetworkManager] Spawning player at {spawnPosition}");
+        #endif
         PhotonNetwork.Instantiate(playerPrefab.name, spawnPosition, spawnRotation);
     }
 
