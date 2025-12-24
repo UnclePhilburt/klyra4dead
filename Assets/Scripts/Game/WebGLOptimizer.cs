@@ -65,8 +65,9 @@ public class WebGLOptimizer : MonoBehaviour
     void ApplyWebGLSettings()
     {
         // Reduce physics overhead
-        Physics.defaultSolverIterations = 4; // Default is 6
-        Physics.defaultSolverVelocityIterations = 1; // Default is 1
+        Physics.defaultSolverIterations = 3;
+        Physics.defaultSolverVelocityIterations = 1;
+        Physics.autoSyncTransforms = false; // Manual sync only
 
         // Reduce audio overhead
         AudioSettings.SetDSPBufferSize(1024, 4);
@@ -74,15 +75,25 @@ public class WebGLOptimizer : MonoBehaviour
         // Target 30 FPS to be stable
         Application.targetFrameRate = 30;
 
-        // Reduce quality settings for WebGL
-        QualitySettings.shadowDistance = 30f;
+        // Aggressive quality reduction for WebGL
+        QualitySettings.shadowDistance = 20f;
         QualitySettings.shadowCascades = 1;
+        QualitySettings.shadows = ShadowQuality.HardOnly;
         QualitySettings.vSyncCount = 0;
+        QualitySettings.skinWeights = SkinWeights.TwoBones; // Cheaper animation
+        QualitySettings.lodBias = 0.5f; // More aggressive LOD
+
+        // Limit zombie population for WebGL
+        if (ZombiePopulationManager.Instance != null)
+        {
+            ZombiePopulationManager.Instance.baseMaxZombies = 25;
+            ZombiePopulationManager.Instance.zombiesPerPlayer = 10;
+        }
 
         // Start with medium settings
         SetPerformanceLevel(PerformanceLevel.Medium);
 
-        Debug.Log("[WebGLOptimizer] Applied WebGL-specific settings");
+        Debug.Log("[WebGLOptimizer] Applied WebGL-specific settings - max 25 zombies");
     }
 
     void Update()

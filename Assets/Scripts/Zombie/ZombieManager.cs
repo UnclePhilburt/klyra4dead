@@ -67,6 +67,17 @@ public class ZombieManager : MonoBehaviour
 
     void Start()
     {
+        // WebGL: Reduce distances aggressively
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        nearDistance = 15f;
+        midDistance = 25f;
+        farDistance = 35f;
+        veryFarDistance = 45f;
+        cullingDistance = 50f;
+        maxUpdatesPerFrame = 15;
+        Debug.Log("[ZombieManager] WebGL mode - reduced distances, culling at 50m");
+        #endif
+
         // Pre-calculate squared distances to avoid sqrt in hot path
         CacheDistanceThresholds();
     }
@@ -184,24 +195,39 @@ public class ZombieManager : MonoBehaviour
     {
         if (frozenZombies.Contains(zombie)) return;
         frozenZombies.Add(zombie);
-        
-        // Disable NavMeshAgent to save CPU
+
+        // AGGRESSIVE: Disable everything to save CPU
         var agent = zombie.GetComponent<UnityEngine.AI.NavMeshAgent>();
         if (agent != null) agent.enabled = false;
-        
-        // Reduce animator update
+
+        // Completely disable animator
         var animator = zombie.GetComponentInChildren<Animator>();
-        if (animator != null) animator.updateMode = AnimatorUpdateMode.Normal;
+        if (animator != null) animator.enabled = false;
+
+        // Disable AI script itself
+        zombie.enabled = false;
+
+        // Disable collider for physics savings
+        var collider = zombie.GetComponent<Collider>();
+        if (collider != null) collider.enabled = false;
     }
-    
+
     void UnfreezeZombie(ZombieAI zombie)
     {
         if (!frozenZombies.Contains(zombie)) return;
         frozenZombies.Remove(zombie);
-        
-        // Re-enable NavMeshAgent
+
+        // Re-enable everything
+        zombie.enabled = true;
+
         var agent = zombie.GetComponent<UnityEngine.AI.NavMeshAgent>();
         if (agent != null) agent.enabled = true;
+
+        var animator = zombie.GetComponentInChildren<Animator>();
+        if (animator != null) animator.enabled = true;
+
+        var collider = zombie.GetComponent<Collider>();
+        if (collider != null) collider.enabled = true;
     }
 
     /// <summary>
